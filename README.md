@@ -1,2 +1,3 @@
-# HAND
-An autonomous robotic manipulation system built with C++, integrating computer vision, motion planning, and intelligent control.
+# HAND — Human Assisted Neural Dexterity
+
+An ongoing project. This repository captures a small milestone in its development.

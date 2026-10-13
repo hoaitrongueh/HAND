@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run HAND",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/outputs/hand.exe",
+      "cwd": "${workspaceFolder}",
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+      "preLaunchTask": "Build HAND"
+    }
+  ]
+}
