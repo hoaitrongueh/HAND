@@ -27,7 +27,6 @@ bool inverse_kinematics(double l1, double l2, double x, double y,
         return false;
     }
 
-    // Clamp only small rounding errors after rejecting unreachable targets.
     cos_theta2 = std::clamp(cos_theta2, -1.0, 1.0);
     double theta2 = std::acos(cos_theta2);
     if (!elbow_up) {
