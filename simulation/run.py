@@ -20,6 +20,7 @@ if home_id == -1:
 mujoco.mj_resetDataKeyframe(model, data, home_id)
 mujoco.mj_forward(model, data)
 
+hand_id=mujoco.mj_name2id(model,mujoco.mjtObj.mjOBJ_BODY,"hand")
 
 print("Joint positions:", data.qpos)
 print("Actuator controls:", data.ctrl)
@@ -100,11 +101,18 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         worst_joint = np.argmax(errors) + 1
 
         if data.time - last_report_time >= 1:
+            hand_position = data.xpos[hand_id].copy()
             print(
                 f"Time: {data.time:.2f}s | "
                 f"Max error: {max_error:.5f} rad | "
                 f"Mean error: {mean_error:.5f} rad | "
                 f"Worst joint: {worst_joint}"
+            )
+            print(
+                f"Hand XYZ: "
+                f"x={hand_position[0]:.4f}, "
+                f"y={hand_position[1]:.4f}, "
+                f"z={hand_position[2]:.4f}"
             )
             last_report_time = data.time
             if data.time >= 10.0:
