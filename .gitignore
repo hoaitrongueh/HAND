@@ -11,9 +11,7 @@ CMakeUserPresets.json
 
 # Local datasets, trained weights, and generated experiment output
 /data/*
-!/data/.gitkeep
 /outputs/*
-!/outputs/.gitkeep
 *.pt
 *.pth
 *.onnx
