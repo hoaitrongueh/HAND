@@ -1,4 +1,5 @@
 from pathlib import Path
+from controller import interpolate
 
 import mujoco
 import mujoco.viewer
@@ -48,7 +49,7 @@ print(f"Target angle: {target_angle:.3f} rad")
 
 wall_start = time.perf_counter()
 
-
+last_report_time = -1.0
 with mujoco.viewer.launch_passive(model, data) as viewer:
     while viewer.is_running():
         frame_start = time.perf_counter()
@@ -61,13 +62,28 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             if data.time < 2.0:
                 data.ctrl[actuator_id] = home_angle
             elif data.time < 5.0:
-                data.ctrl[actuator_id] = target_angle
+                progress=(data.time-2)/3
+                desired_angle=interpolate(home_angle,target_angle,progress)
+                data.ctrl[actuator_id]=desired_angle
             else:
-                data.ctrl[actuator_id] = home_angle
+                data.ctrl[actuator_id] = target_angle
 
             mujoco.mj_step(model, data)
 
         viewer.sync()
+
+        actual_angle=float(data.qpos[joint_qpos_index])
+        desired_angle=float(data.ctrl[actuator_id])
+        error=abs(desired_angle-actual_angle)
+
+        if data.time - last_report_time >=1:
+            print(
+                f"Time: {data.time:.2f}s | "
+                f"Target: {desired_angle:.3f} | "
+                f"Actual: {actual_angle:.3f} | "
+                f"Error: {error:.4f} rad"
+            )
+            last_report_time=data.time
 
         elapsed = time.perf_counter() - frame_start
         remaining = (1.0 / 60.0) - elapsed
