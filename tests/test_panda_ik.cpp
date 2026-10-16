@@ -111,7 +111,7 @@ Record run(Robot& r, const Vec& target, const std::string& category,
     const auto stop = std::chrono::steady_clock::now();
     rec.microseconds = std::chrono::duration<double, std::micro>(stop - start).count();
     rec.final = r.full_q();
-    if (check) mj_forward(r.m.get(), r.d.get()); // Independent FK refresh, outside timing.
+    if (check) mj_forward(r.m.get(), r.d.get());
     for (const auto& s : rec.result.steps) {
         if (s.accepted && s.error_after > s.error_before + 1e-12) ++rec.increases;
         if (s.accepted && s.error_before > tolerance &&
@@ -119,7 +119,7 @@ Record run(Robot& r, const Vec& target, const std::string& category,
     }
     rec.net_worse = !rec.result.steps.empty() &&
         rec.result.final_error > rec.result.steps.front().error_before + 1e-12;
-    records.push_back(rec); // Write evidence even if a following assertion fails.
+    records.push_back(rec);
     std::cout << category << '/' << id << " target=[" << values(target)
               << "] initial=[" << values(rec.initial) << "] final=[" << values(rec.final)
               << "] error=" << rec.result.final_error << " updates=" << rec.result.iterations
@@ -177,8 +177,6 @@ Q sample(Robot& r, std::mt19937& rng, double margin = 0.05) {
     for (int i = 0; i < 7; ++i) {
         const int id = r.joint(i);
         const double lo = r.m->jnt_range[2 * id], hi = r.m->jnt_range[2 * id + 1];
-        // Explicit mt19937 integer conversion avoids implementation-specific
-        // uniform_real_distribution sequences across standard libraries.
         const double u = static_cast<double>(rng()) / 4294967296.0;
         q[i] = lo + (hi - lo) * (margin + (1 - 2 * margin) * u);
     }
@@ -304,17 +302,15 @@ void indexing() {
         require(shifted.m->jnt_qposadr[id] == 7 + i && shifted.m->jnt_dofadr[id] == 6 + i,
                 "Shift fixture did not separate qpos/dof addresses");
     }
-    // Gripper intentionally asymmetric; only FK, no dynamics/equality integration.
     shifted.d->qpos[14] = .012; shifted.d->qpos[15] = .031;
     mj_forward(shifted.m.get(), shifted.d.get());
     const auto rec = run(shifted, shifted.position() + Vec(.02, 0, 0), "indexing", "free_sibling");
     require(rec.result.success && rec.result.iterations == 5, "Mapped baseline failed");
-    jacobian(shifted); // Explicitly exercises the shifted DOF column mapping.
+    jacobian(shifted);
 }
 
 void atomic_rejection() {
     Robot r; const Q home = r.angles();
-    // Last moving arm joint (joint6) rejects, after earlier proposed angles exist.
     const int id = r.joint(5);
     r.m->jnt_range[2 * id] = home[5] - 1e-12;
     r.m->jnt_range[2 * id + 1] = home[5] + 1e-12;
@@ -360,7 +356,6 @@ void invalid_model() {
 }
 void missing_joint(bool at_target) {
     Robot r;
-    // Copy is private to this test process; renaming preserves valid MuJoCo arrays.
     const int id = r.joint(6); r.m->names[r.m->name_jntadr[id]] = 'X';
     const auto q = r.full_q();
     const auto result = hand::solve_panda_ik(r.m.get(), r.d.get(), r.position() +
@@ -372,8 +367,6 @@ void missing_joint(bool at_target) {
 }
 void unreachable() {
     Robot r;
-    // Sum of all root-to-hand link translation lengths is a conservative reach
-    // bound (rotation preserves lengths). 10 m is far beyond this model's <2 m bound.
     double bound = 0;
     for (int b = r.body; b > 0; b = r.m->body_parentid[b])
         bound += Eigen::Map<const Vec>(r.m->body_pos + 3 * b).norm();
@@ -388,7 +381,6 @@ void constrained_target() {
         const int id = r.joint(i);
         r.m->jnt_range[2 * id] = q[i]; r.m->jnt_range[2 * id + 1] = q[i];
     }
-    // Test-only locked-arm model has a singleton position workspace.
     const auto rec = run(r, p + Vec(.02, 0, 0), "constrained", "locked_arm");
     require(!rec.result.success && rec.result.reason == hand::IkTermination::joint_limit,
             "Locked-arm unreachable target not rejected");
@@ -435,7 +427,6 @@ void singular() {
     r.set(witness); require(r.valid(), "Poor-conditioning witness not valid");
     const Vec reachable = r.position(); r.set(weakest);
     run(r, reachable, "singular", "poorly_conditioned_panda", &witness);
-    // Exact rank-zero synthetic fixture isolates damping and bounded stagnation.
     std::string xml = "<mujoco><worldbody>";
     for (int i = 1; i <= 7; ++i)
         xml += "<body pos=\"0 0 .1\"><joint name=\"joint" + std::to_string(i) +
@@ -454,8 +445,6 @@ void singular() {
 }
 void last_update() {
     Robot r; hand::IkOptions options;
-    // Same baseline, shortened budget: fifth update crosses tolerance. Defaults
-    // remain unchanged; this isolates the missing terminal convergence check.
     options.max_iterations = 5;
     const auto rec = run(r, r.position() + Vec(.02, 0, 0), "defect", "last_update", nullptr, options);
     require(rec.result.final_error <= tolerance, "Reproducer did not cross tolerance");
@@ -481,7 +470,7 @@ void nonfinite_state() {
 
 void invalid_state_limits() {
     Robot r; Q q = r.angles();
-    q[3] = 0; r.set(q); // joint4 upper bound is -0.0698.
+    q[3] = 0; r.set(q);
     require(!r.valid(), "Invalid-state reproducer is no longer out of limits");
     const auto rec = run(r, r.position(), "invalid_state", "joint4_outside_limit", nullptr, {}, false);
     require(!rec.result.success, "Out-of-limit arm configuration reported as converged");
@@ -494,8 +483,6 @@ void reachable_joint_limit() {
     r.set(witness); require(r.valid(), "Reachability witness violates model limits");
     const Vec target = r.position(); r.set(home);
     const auto rec = run(r, target, "known_reachable_regression", "stress_seed_case_2", &witness);
-    // Deliberately strict desired-behavior regression. This does not assert that
-    // local DLS is complete; it preserves a demonstrated recovery weakness.
     require(rec.result.success, "FK-witnessed reachable target stopped on joint-limit proposal");
 }
 
@@ -542,7 +529,7 @@ void stress() {
                   << '\n';
     }
 }
-} // namespace
+}
 
 int main(int argc, char** argv) {
     std::cout << std::setprecision(17);

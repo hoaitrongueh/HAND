@@ -13,4 +13,4 @@ struct JointAngles2D {
 };
 bool inverse_kinematics(double l1, double l2, double x, double y,
                         JointAngles2D &result, bool elbow_up);
-} // namespace hand
+}

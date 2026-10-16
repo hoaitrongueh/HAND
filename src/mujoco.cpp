@@ -24,4 +24,4 @@ void MujocoSimulation::reset_keyframe(const char* name) {
     mj_resetDataKeyframe(model_.get(),data_.get(),home_id);
     mj_forward(model_.get(),data_.get());
 }
-} // namespace hand
+}

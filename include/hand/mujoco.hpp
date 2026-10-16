@@ -4,8 +4,6 @@
 #include <memory>
 
 namespace hand {
-// Owns one model and its matching data. Data is destroyed before the model.
-// Resource/setup errors throw std::runtime_error; no IK policy lives here.
 class MujocoSimulation {
 public:
     explicit MujocoSimulation(const char* path);
@@ -18,4 +16,4 @@ private:
     std::unique_ptr<mjModel, decltype(&mj_deleteModel)> model_;
     std::unique_ptr<mjData, decltype(&mj_deleteData)> data_;
 };
-} // namespace hand
+}

@@ -39,4 +39,4 @@ bool inverse_kinematics(double l1, double l2, double x, double y,
     result = {theta1, theta2};
     return true;
 }
-} // namespace hand
+}

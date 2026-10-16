@@ -28,8 +28,6 @@ IkResult solve_panda_ik(const mjModel* model, mjData* data,
         result.reason = IkTermination::invalid_model;
         return result;
     }
-    // Original loop/math/mapping from docs/panda_ik_original.cpp. Options bind
-    // the original names; result assignments only observe the existing decisions.
     const double L = options.damping;
     const double alpha = options.step_size;
     std::vector<mjtNum> jacp(3 * model->nv, 0);
@@ -76,7 +74,6 @@ IkResult solve_panda_ik(const mjModel* model, mjData* data,
             std::string joint_name = "joint" + std::to_string(i+1);
             int joint_id = mj_name2id(model,mjOBJ_JOINT,joint_name.c_str());
             if (joint_id == -1) {
-                // Model/data belong to the caller; never destroy them here.
                 result.reason = IkTermination::missing_joint;
                 return result;
             }
@@ -119,8 +116,6 @@ IkResult solve_panda_ik(const mjModel* model, mjData* data,
             break;
         }
     }
-    // Intentionally no extra convergence check: the original loop checked only
-    // before an update, including on its last iteration.
     return result;
 }
-} // namespace hand
+}

@@ -4,8 +4,6 @@ project(HAND VERSION 0.0.1 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Eigen is header-only. Expose its vendored headers without configuring the
-# upstream documentation, benchmarks, tests, or install rules.
 set(HAND_EIGEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen")
 if(NOT EXISTS "${HAND_EIGEN_DIR}/Eigen/Core")
     message(FATAL_ERROR "Eigen headers missing: ${HAND_EIGEN_DIR}/Eigen/Core")
@@ -78,7 +76,6 @@ if(HAND_BUILD_MUJOCO)
         INTERFACE_INCLUDE_DIRECTORIES "${MUJOCO_DIR}/include"
     )
 
-    # Resource/state setup is separate from the IK algorithm and the 2D core.
     add_library(hand_mujoco STATIC src/mujoco.cpp)
     target_compile_features(hand_mujoco PUBLIC cxx_std_17)
     target_include_directories(hand_mujoco PUBLIC "${PROJECT_SOURCE_DIR}/include")

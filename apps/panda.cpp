@@ -28,7 +28,6 @@ int main() {
         }
         std::cout << "Final error: " << result.final_error << " m | Updates: "
                   << result.iterations << " | " << hand::to_string(result.reason) << '\n';
-        // Keep the demo's original exit policy; automated tests inspect IkResult.
         return 0;
     } catch (const std::runtime_error& error) {
         std::cerr << error.what() << '\n';

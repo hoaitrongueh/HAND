@@ -25,16 +25,12 @@ struct IkStep {
 struct IkResult {
     bool success = false;
     double final_error = std::numeric_limits<double>::quiet_NaN();
-    int iterations = 0; // Committed updates; rejected proposals are not updates.
+    int iterations = 0;
     IkTermination reason = IkTermination::iteration_limit;
     std::vector<IkStep> steps;
 };
 
-// Position of the body origin in world coordinates; orientation is unconstrained.
-// Caller supplies matching model/data with current mj_forward results. Only joint1..7
-// qpos are committed. Retains the demo's full-nv DLS calculation, finite-input
-// behavior, and pre-update convergence check for adversarial validation.
 IkResult solve_panda_ik(const mjModel* model, mjData* data,
                         const Eigen::Vector3d& target, const char* body = "hand",
                         const IkOptions& options = {});
-} // namespace hand
+}
