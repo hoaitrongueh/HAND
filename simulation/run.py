@@ -1,5 +1,4 @@
 from pathlib import Path
-from turtle import home
 from controller import interpolate
 import numpy as np
 import mujoco

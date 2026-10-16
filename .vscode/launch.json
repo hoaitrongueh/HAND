@@ -5,7 +5,7 @@
       "name": "Run HAND",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/outputs/hand.exe",
+      "program": "${workspaceFolder}/build/hand_demo.exe",
       "cwd": "${workspaceFolder}",
       "externalConsole": false,
       "MIMode": "gdb",
