@@ -127,6 +127,7 @@ if(BUILD_TESTING)
         )
         set(PANDA_IK_CASES baseline directions tolerance displacements configurations
             near_limits jacobian indexing atomic_rejection disabled_limits
+            accepted_monotonicity line_search_rejection tiny_improvement invalid_options numerical_validity
             invalid_model missing_joint missing_joint_at_target unreachable
             constrained_target singular last_update nonfinite_state invalid_state_limits
             reachable_joint_limit nan_x nan_y nan_z inf_x inf_y inf_z

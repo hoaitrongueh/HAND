@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -111,7 +112,12 @@ Record run(Robot& r, const Vec& target, const std::string& category,
     const auto stop = std::chrono::steady_clock::now();
     rec.microseconds = std::chrono::duration<double, std::micro>(stop - start).count();
     rec.final = r.full_q();
-    if (check) mj_forward(r.m.get(), r.d.get());
+    if (check) {
+        const std::vector<mjtNum> returned_xpos(r.d->xpos, r.d->xpos + 3 * r.m->nbody);
+        mj_forward(r.m.get(), r.d.get());
+        require(std::equal(returned_xpos.begin(), returned_xpos.end(), r.d->xpos),
+                "Returned FK state was not synchronized with qpos");
+    }
     for (const auto& s : rec.result.steps) {
         if (s.accepted && s.error_after > s.error_before + 1e-12) ++rec.increases;
         if (s.accepted && s.error_before > tolerance &&
@@ -139,6 +145,18 @@ Record run(Robot& r, const Vec& target, const std::string& category,
         for (const auto& s : rec.result.steps)
             require(std::isfinite(s.error_before) && std::isfinite(s.error_after),
                     "Non-finite trace");
+        int accepted = 0;
+        for (const auto& s : rec.result.steps) if (s.accepted) {
+            ++accepted;
+            require(s.error_after <= s.error_before &&
+                    (s.error_after <= options.tolerance || s.error_before - s.error_after >= 1e-10),
+                    "Accepted step increased error or stagnated outside tolerance");
+        }
+        require(accepted == rec.result.iterations, "Iterations must count committed updates only");
+        require(rec.result.steps.size() <= 10 * static_cast<std::size_t>(accepted + 1),
+                "More than ten trials per update/terminal rejection");
+        require(rec.result.success == (rec.result.reason == hand::IkTermination::converged),
+                "Convergence status disagrees with termination reason");
     }
     return rec;
 }
@@ -315,11 +333,15 @@ void atomic_rejection() {
     r.m->jnt_range[2 * id] = home[5] - 1e-12;
     r.m->jnt_range[2 * id + 1] = home[5] + 1e-12;
     const auto before = r.full_q();
+    const Vec position = r.position();
     const auto rec = run(r, r.position() + Vec(.02, 0, 0), "safety", "atomic_rejection");
     require(rec.result.reason == hand::IkTermination::joint_limit &&
-            rec.result.iterations == 0 && rec.result.steps.size() == 1 &&
-            !rec.result.steps[0].accepted && r.full_q() == before,
-            "Rejected proposal partially committed or retried");
+            rec.result.iterations == 0 && rec.result.steps.size() == 10 &&
+            r.full_q() == before && r.position() == position,
+            "Bounded joint-limit rejection modified state or counted an update");
+    for (const auto& step : rec.result.steps)
+        require(!step.accepted && step.error_before == step.error_after,
+                "Out-of-limit proposal was evaluated or accepted");
     Robot later; const Q start = later.angles();
     const Q witness{-.60040731942799397, 1.1038278355282545, -.21411064918577694,
         -2.7778767300428822, -1.3713232638383797, 1.2919959273124113, -1.2970355714879649};
@@ -328,10 +350,161 @@ void atomic_rejection() {
     const auto accepted = run(later, target, "safety", "accepted_prefix", &witness, one);
     require(accepted.result.iterations == 1, "Late-rejection fixture did not first commit an update");
     const auto prefix = later.full_q();
+    const Vec prefix_position = later.position();
+    // Explicitly lock the accepted state: backtracking may otherwise recover
+    // from the next full-size proposal's limit violation.
+    for (int i = 0; i < 7; ++i) {
+        const int joint = later.joint(i);
+        later.m->jnt_range[2 * joint] = later.m->jnt_range[2 * joint + 1] = later.angles()[i];
+    }
     const auto rejected = run(later, target, "safety", "rejection_after_prefix", &witness, one);
     require(rejected.result.reason == hand::IkTermination::joint_limit &&
-            rejected.result.iterations == 0 && later.full_q() == prefix,
+            rejected.result.iterations == 0 && rejected.result.steps.size() == 10 &&
+            later.full_q() == prefix && later.position() == prefix_position,
             "Rejection after earlier progress modified a partial joint state");
+
+    Robot bounded;
+    const Q prefix_arm = later.angles();
+    for (int i = 0; i < 7; ++i) {
+        const int joint = bounded.joint(i);
+        bounded.m->jnt_range[2 * joint] = std::min(start[i], prefix_arm[i]) - 1e-12;
+        bounded.m->jnt_range[2 * joint + 1] = std::max(start[i], prefix_arm[i]) + 1e-12;
+    }
+    const auto combined = run(bounded, target, "safety", "commit_then_reject");
+    require(!combined.result.success && combined.result.reason == hand::IkTermination::joint_limit &&
+            combined.result.iterations == 1 && combined.result.steps.size() == 11 &&
+            combined.result.steps.front().accepted && bounded.full_q() == prefix &&
+            bounded.position() == prefix_position,
+            "Terminal rejection within one solve did not preserve the accepted prefix");
+}
+
+void accepted_monotonicity() {
+    Robot r;
+    for (int i = 0; i < 7; ++i) r.m->jnt_limited[r.joint(i)] = 0;
+    hand::IkOptions options; options.step_size = 8; options.max_iterations = 4;
+    const auto rec = run(r, r.position() + Vec(.02, 0, 0),
+                         "backtracking", "monotonicity", nullptr, options);
+    // Monotonic progress does not imply convergence for an aggressive step size.
+    require(!rec.result.success && rec.result.reason == hand::IkTermination::iteration_limit &&
+            rec.result.iterations == options.max_iterations,
+            "Monotonicity fixture did not exercise the full bounded update budget");
+    int accepted = 0, rejected = 0;
+    double committed_error = rec.result.steps.front().error_before;
+    for (const auto& step : rec.result.steps) {
+        require(std::abs(step.error_before - committed_error) < 1e-15,
+                "Retry was based on a rejected candidate instead of the committed state");
+        if (step.accepted) {
+            ++accepted;
+            require(step.error_after <= step.error_before &&
+                    (step.error_after <= options.tolerance ||
+                     step.error_before - step.error_after >= 1e-10),
+                    "Accepted step increased error or made insufficient progress");
+            committed_error = step.error_after;
+        } else ++rejected;
+    }
+    require(accepted == rec.result.iterations && accepted > 0 && rejected > 0,
+            "Trace did not include both retries and committed updates");
+    require(rec.result.steps.size() <= 10 * static_cast<std::size_t>(accepted),
+            "Backtracking exceeded ten trials per committed update");
+}
+
+void line_search_rejection() {
+    Robot r;
+    for (int i = 0; i < 7; ++i) r.m->jnt_limited[r.joint(i)] = 0;
+    const auto before = r.full_q(); const Vec position = r.position();
+    hand::IkOptions options; options.step_size = 8192;
+    const auto rec = run(r, position + Vec(.02, 0, 0),
+                         "backtracking", "worsening_candidates", nullptr, options);
+    require(!rec.result.success && rec.result.reason == hand::IkTermination::line_search_failed &&
+            rec.result.iterations == 0 && rec.result.steps.size() == 10,
+            "Feasible worsening candidates were not rejected within ten trials");
+    for (const auto& step : rec.result.steps)
+        require(!step.accepted && step.error_after > step.error_before,
+                "Fixture must exercise actual FK evaluation and rejection");
+    require(r.full_q() == before && r.position() == position &&
+            rec.result.final_error == rec.result.steps.front().error_before,
+            "Rejected FK candidates were not rolled back atomically");
+
+    // Cover the alpha floor both before the first trial and after one rejection.
+    for (double alpha : {5e-7, 1e-6}) {
+        Robot tiny; const auto q = tiny.full_q(); const Vec p = tiny.position();
+        options.step_size = alpha; options.tolerance = 0;
+        const auto small = run(tiny, p + Vec(2e-8, 0, 0),
+                               "backtracking", "alpha_floor", nullptr, options);
+        require(!small.result.success && small.result.reason == hand::IkTermination::line_search_failed &&
+                small.result.iterations == 0 && small.result.steps.size() == (alpha < 1e-6 ? 0u : 1u) &&
+                tiny.full_q() == q && tiny.position() == p,
+                "Alpha floor misclassified as joint limit or committed a tiny update");
+    }
+
+    Robot mixed; const auto mixed_q = mixed.full_q(); const Vec mixed_p = mixed.position();
+    const auto j = jacobian(mixed);
+    const Eigen::Matrix<double, 7, 1> dq = j.transpose() *
+        (j * j.transpose() + .05 * .05 * Eigen::Matrix3d::Identity()).ldlt().solve(Vec(2e-8, 0, 0));
+    require(std::abs(dq[5]) > 1e-9, "Mixed-rejection fixture needs nonzero joint6 motion");
+    const int joint = mixed.joint(5);
+    const double center = mixed.angles()[5], radius = std::abs(dq[5]) * .003;
+    mixed.m->jnt_range[2 * joint] = center - radius;
+    mixed.m->jnt_range[2 * joint + 1] = center + radius;
+    options = {}; options.tolerance = 0;
+    const auto result = run(mixed, mixed_p + Vec(2e-8, 0, 0),
+                            "backtracking", "mixed_rejections", nullptr, options).result;
+    require(!result.success && result.reason == hand::IkTermination::line_search_failed &&
+            result.iterations == 0 && result.steps.size() == 10 &&
+            mixed.full_q() == mixed_q && mixed.position() == mixed_p,
+            "Feasible but insufficient progress was misclassified as a joint-limit failure");
+    bool limit_rejected = false, evaluated = false;
+    for (const auto& step : result.steps) {
+        require(!step.accepted, "Mixed-rejection fixture unexpectedly committed an update");
+        limit_rejected |= step.error_after == step.error_before;
+        evaluated |= step.error_after < step.error_before;
+    }
+    require(limit_rejected && evaluated, "Fixture did not include both kinds of rejection");
+}
+
+void tiny_improvement() {
+    Robot r; hand::IkOptions options;
+    options.tolerance = 1.5e-12; options.max_iterations = 1;
+    const auto rec = run(r, r.position() + Vec(2e-12, 0, 0),
+                         "backtracking", "tiny_improvement", nullptr, options);
+    require(rec.result.success && rec.result.reason == hand::IkTermination::converged &&
+            rec.result.iterations == 1 && rec.result.steps.size() == 1,
+            "Tolerance-reaching update rejected because improvement was tiny");
+    const auto& step = rec.result.steps.front();
+    require(step.accepted && step.error_before > options.tolerance &&
+            step.error_after <= options.tolerance &&
+            step.error_before - step.error_after > 0 && step.error_before - step.error_after < 1e-10,
+            "Fixture did not cross tolerance with sub-threshold improvement");
+}
+
+void invalid_options() {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    Robot r; const auto before = r.full_q(); const Vec position = r.position();
+    auto check = [&](const hand::IkOptions& options) {
+        for (const Vec target : {position, Vec(position + Vec(.02, 0, 0))}) {
+            const auto result = hand::solve_panda_ik(r.m.get(), r.d.get(), target, "hand", options);
+            require(!result.success && result.reason == hand::IkTermination::invalid_options &&
+                    result.iterations == 0 && result.steps.empty() && std::isnan(result.final_error) &&
+                    r.full_q() == before && r.position() == position,
+                    "Invalid options not rejected before convergence/mutation");
+        }
+    };
+    for (double value : {-1.0, nan, inf, -inf}) {
+        hand::IkOptions options; options.damping = value; check(options);
+        options = {}; options.tolerance = value; check(options);
+    }
+    for (double value : {0.0, -1.0, nan, inf, -inf}) {
+        hand::IkOptions options; options.step_size = value; check(options);
+    }
+    for (int value : {0, -1}) {
+        hand::IkOptions options; options.max_iterations = value; check(options);
+    }
+    hand::IkOptions valid; valid.damping = 0; valid.tolerance = 0;
+    const auto result = hand::solve_panda_ik(r.m.get(), r.d.get(), position, "hand", valid);
+    require(result.success && result.reason == hand::IkTermination::converged &&
+            result.iterations == 0 && result.steps.empty() && r.full_q() == before,
+            "Valid zero damping/tolerance rejected at exact target");
 }
 void disabled_limits() {
     Robot r; const Q home = r.angles();
@@ -364,6 +537,8 @@ void missing_joint(bool at_target) {
               << " reason=" << hand::to_string(result.reason) << '\n';
     require(!result.success && result.reason == hand::IkTermination::missing_joint && q == r.full_q(),
             "Malformed arm accepted or state modified");
+    require(result.iterations == 0 && result.steps.empty(),
+            "Missing arm joint was detected only after an attempted update");
 }
 void unreachable() {
     Robot r;
@@ -439,16 +614,29 @@ void singular() {
     Robot s(path); const auto q = s.full_q();
     require(jacobian(s).norm() == 0, "Fixture is not rank zero");
     const auto rec = run(s, s.position() + Vec(.02, 0, 0), "singular", "rank_zero_fixture");
-    require(rec.result.reason == hand::IkTermination::iteration_limit &&
-            rec.result.iterations == 100 && rec.stagnant == 100 && q == s.full_q(),
-            "Rank-zero damping/bounded stagnation changed");
+    require(!rec.result.success && rec.result.reason == hand::IkTermination::line_search_failed &&
+            rec.result.iterations == 0 && rec.result.steps.size() == 10 &&
+            rec.stagnant == 0 && q == s.full_q(),
+            "Rank-zero proposals should exhaust ten trials without committing stagnant updates");
+    for (const auto& step : rec.result.steps)
+        require(!step.accepted && step.error_before == step.error_after,
+                "Rank-zero step was accepted or changed error");
 }
 void last_update() {
+    Robot short_run; hand::IkOptions short_options; short_options.max_iterations = 4;
+    const auto short_rec = run(short_run, short_run.position() + Vec(.02, 0, 0),
+                               "boundary", "before_last_update", nullptr, short_options);
+    require(!short_rec.result.success && short_rec.result.reason == hand::IkTermination::iteration_limit &&
+            short_rec.result.iterations == 4 && short_rec.result.steps.size() == 4 &&
+            short_rec.result.final_error > tolerance,
+            "Iteration-limit boundary changed");
     Robot r; hand::IkOptions options;
     options.max_iterations = 5;
     const auto rec = run(r, r.position() + Vec(.02, 0, 0), "defect", "last_update", nullptr, options);
     require(rec.result.final_error <= tolerance, "Reproducer did not cross tolerance");
-    require(rec.result.success, "Final update reached tolerance but solver reported iteration_limit");
+    require(rec.result.success && rec.result.reason == hand::IkTermination::converged &&
+            rec.result.iterations == 5 && rec.result.steps.size() == 5,
+            "Final update reached tolerance but solver reported iteration_limit");
 }
 void nonfinite(const std::string& name) {
     Robot r; Vec target = r.position(); const auto before = r.full_q();
@@ -456,7 +644,9 @@ void nonfinite(const std::string& name) {
     target[axis] = name.substr(0, 3) == "nan" ? std::numeric_limits<double>::quiet_NaN() :
         (name.rfind("neginf", 0) == 0 ? -1 : 1) * std::numeric_limits<double>::infinity();
     const auto rec = run(r, target, "invalid_target", name, nullptr, {}, false);
-    require(!rec.result.success, "Non-finite target falsely converged");
+    require(!rec.result.success && rec.result.reason == hand::IkTermination::invalid_input &&
+            rec.result.iterations == 0 && rec.result.steps.empty() && std::isnan(rec.result.final_error),
+            "Non-finite target not rejected before attempting updates");
     require(r.full_q() == before, "Non-finite target corrupted qpos (NaN bypasses range comparisons)");
 }
 void nonfinite_state() {
@@ -464,8 +654,26 @@ void nonfinite_state() {
     r.d->qpos[0] = std::numeric_limits<double>::quiet_NaN();
     mj_forward(r.m.get(), r.d.get());
     const auto rec = run(r, target, "invalid_state", "nan_qpos", nullptr, {}, false);
-    require(!rec.result.success, "Non-finite state falsely converged");
-    require(rec.result.iterations == 0, "Non-finite state accepted updates instead of rejecting input");
+    require(!rec.result.success && rec.result.reason == hand::IkTermination::invalid_numerics &&
+            rec.result.iterations == 0 && rec.result.steps.empty(),
+            "Non-finite state accepted updates instead of rejecting invalid numerics");
+}
+
+void numerical_validity() {
+    const double huge = std::numeric_limits<double>::max();
+    for (int scenario = 0; scenario < 3; ++scenario) {
+        Robot r; const auto q = r.full_q(); const Vec p = r.position();
+        Vec target = p + Vec(.02, 0, 0); hand::IkOptions options;
+        if (scenario == 0) target = Vec::Constant(huge); // finite input, overflowing norm
+        if (scenario == 1) options.damping = huge; // overflowing normal matrix
+        if (scenario == 2) { options.step_size = huge; target = p + Vec(100, 0, 0); }
+        const auto result = hand::solve_panda_ik(r.m.get(), r.d.get(), target, "hand", options);
+        std::cout << "Numerical overflow scenario=" << scenario
+                  << " reason=" << hand::to_string(result.reason) << '\n';
+        require(!result.success && result.reason == hand::IkTermination::invalid_numerics &&
+                result.iterations == 0 && result.steps.empty() && r.full_q() == q && r.position() == p,
+                "Overflow was not rejected before committing state");
+    }
 }
 
 void invalid_state_limits() {
@@ -473,7 +681,9 @@ void invalid_state_limits() {
     q[3] = 0; r.set(q);
     require(!r.valid(), "Invalid-state reproducer is no longer out of limits");
     const auto rec = run(r, r.position(), "invalid_state", "joint4_outside_limit", nullptr, {}, false);
-    require(!rec.result.success, "Out-of-limit arm configuration reported as converged");
+    require(!rec.result.success && rec.result.reason == hand::IkTermination::joint_limit &&
+            rec.result.iterations == 0 && rec.result.steps.empty() && rec.initial == rec.final,
+            "Out-of-limit arm configuration reported as converged or modified");
 }
 
 void reachable_joint_limit() {
@@ -549,6 +759,11 @@ int main(int argc, char** argv) {
         else if (name == "jacobian") jacobian_check();
         else if (name == "indexing") indexing();
         else if (name == "atomic_rejection") atomic_rejection();
+        else if (name == "accepted_monotonicity") accepted_monotonicity();
+        else if (name == "line_search_rejection") line_search_rejection();
+        else if (name == "tiny_improvement") tiny_improvement();
+        else if (name == "invalid_options") invalid_options();
+        else if (name == "numerical_validity") numerical_validity();
         else if (name == "disabled_limits") disabled_limits();
         else if (name == "invalid_model") invalid_model();
         else if (name == "missing_joint") missing_joint(false);
