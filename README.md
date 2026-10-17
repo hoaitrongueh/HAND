@@ -1,0 +1,1 @@
+Tests are primarily written with **OpenAI Codex** and used for debugging, regression detection, validation, and performance optimization. Test results are reviewed to guide engineering decisions and verify system reliability.
