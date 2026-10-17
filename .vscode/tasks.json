@@ -4,7 +4,7 @@
     {
       "label": "Configure HAND",
       "type": "process",
-      "command": "cmake",
+      "command": "C:/msys64/ucrt64/bin/cmake.exe",
       "args": [
         "-S",
         "${workspaceFolder}",
@@ -12,18 +12,37 @@
         "${workspaceFolder}/build",
         "-G",
         "Ninja",
-        "-DCMAKE_BUILD_TYPE=Debug"
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_CXX_COMPILER=C:/msys64/ucrt64/bin/c++.exe",
+        "-DCMAKE_MAKE_PROGRAM=C:/msys64/ucrt64/bin/ninja.exe",
+        "-DHAND_BUILD_MUJOCO=ON",
+        "-DMUJOCO_DIR=${env:MUJOCO_DIR}",
+        "-DBUILD_TESTING=ON"
       ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/msys64/ucrt64/bin;${env:PATH}"
+        }
+      },
       "problemMatcher": []
     },
     {
       "label": "Build HAND",
       "type": "process",
-      "command": "cmake",
+      "command": "C:/msys64/ucrt64/bin/cmake.exe",
       "args": [
         "--build",
-        "${workspaceFolder}/build"
+        "${workspaceFolder}/build",
+        "--parallel",
+        "4"
       ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/msys64/ucrt64/bin;${env:PATH}"
+        }
+      },
       "dependsOn": "Configure HAND",
       "problemMatcher": [
         "$gcc"
@@ -32,6 +51,60 @@
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "Check HAND dependencies",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": [
+        "scripts/probe_dependencies.py",
+        "--output",
+        "outputs/vscode-dependency-probe.json"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test HAND Python",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": [
+        "-m",
+        "pytest",
+        "-q",
+        "--disable-warnings",
+        "--basetemp=build/pytest-vscode-task"
+      ],
+      "dependsOn": "Build HAND",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/msys64/ucrt64/bin;${env:PATH}"
+        }
+      },
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "Test HAND C++",
+      "type": "process",
+      "command": "C:/msys64/ucrt64/bin/ctest.exe",
+      "args": [
+        "--test-dir",
+        "${workspaceFolder}/build",
+        "--output-on-failure"
+      ],
+      "dependsOn": "Build HAND",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/msys64/ucrt64/bin;${env:PATH}"
+        }
+      },
+      "problemMatcher": [],
+      "group": "test"
     }
   ]
 }

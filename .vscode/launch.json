@@ -2,6 +2,38 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "HAND: Draw DXF (MuJoCo)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "drawing.run",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "${input:handDxf}",
+        "--output",
+        "${input:handOutput}"
+      ],
+      "console": "internalConsole",
+      "justMyCode": true,
+      "preLaunchTask": "Build HAND"
+    },
+    {
+      "name": "HAND: Plan DXF only",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "drawing.run",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "${input:handDxf}",
+        "--output",
+        "${input:handOutput}",
+        "--plan-only"
+      ],
+      "console": "internalConsole",
+      "justMyCode": true
+    },
+    {
       "name": "Run HAND",
       "type": "cppdbg",
       "request": "launch",
@@ -10,7 +42,27 @@
       "externalConsole": false,
       "MIMode": "gdb",
       "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
-      "preLaunchTask": "Build HAND"
+      "preLaunchTask": "Build HAND",
+      "environment": [
+        {
+          "name": "PATH",
+          "value": "C:/msys64/ucrt64/bin;${env:PATH}"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "handDxf",
+      "type": "promptString",
+      "description": "DXF input path (relative to HAND)",
+      "default": "tests/fixtures/house.dxf"
+    },
+    {
+      "id": "handOutput",
+      "type": "promptString",
+      "description": "New output directory (must not already exist)",
+      "default": "outputs/vscode-house"
     }
   ]
 }

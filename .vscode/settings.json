@@ -1,3 +1,31 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:system"
+  "python-envs.defaultEnvManager": "ms-python.python:system",
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.terminal.executeInFileDir": false,
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [
+    "tests",
+    "--basetemp=build/pytest-vscode"
+  ],
+  "cmake.cmakePath": "C:/msys64/ucrt64/bin/cmake.exe",
+  "cmake.ctestPath": "C:/msys64/ucrt64/bin/ctest.exe",
+  "cmake.generator": "Ninja",
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "cmake.configureSettings": {
+    "CMAKE_BUILD_TYPE": "Debug",
+    "CMAKE_CXX_COMPILER": "C:/msys64/ucrt64/bin/c++.exe",
+    "CMAKE_MAKE_PROGRAM": "C:/msys64/ucrt64/bin/ninja.exe",
+    "HAND_BUILD_MUJOCO": true,
+    "MUJOCO_DIR": "${env:MUJOCO_DIR}",
+    "BUILD_TESTING": true
+  },
+  "cmake.environment": {
+    "PATH": "C:/msys64/ucrt64/bin;${env:PATH}"
+  },
+  "C_Cpp.default.compilerPath": "C:/msys64/ucrt64/bin/g++.exe",
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "python.testing.cwd": "${workspaceFolder}"
 }
