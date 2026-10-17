@@ -66,7 +66,7 @@ IkResult solve_panda_ik(const mjModel* model, mjData* data,
             return result;
         }
 
-        // Validate the arm even when no update is needed to reach the target.
+
         std::array<double, 7> original_angles;
         std::array<double, 7> proposed_angles;
         std::array<int, 7> pos_addresses;

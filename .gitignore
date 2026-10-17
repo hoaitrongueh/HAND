@@ -1,4 +1,3 @@
-# CMake build directories and generated compiler artifacts
 /build/
 /build-*/
 /out/
@@ -8,22 +7,16 @@ CMakeUserPresets.json
 *.o
 *.exe
 *.pdb
-
-# Local datasets, trained weights, and generated experiment output
 /data/*
 /outputs/*
 *.pt
 *.pth
 *.onnx
-
-# Python environments and caches
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-
-# Machine-specific files
 .env
 .env.*
 !.env.example

@@ -351,8 +351,8 @@ void atomic_rejection() {
     require(accepted.result.iterations == 1, "Late-rejection fixture did not first commit an update");
     const auto prefix = later.full_q();
     const Vec prefix_position = later.position();
-    // Explicitly lock the accepted state: backtracking may otherwise recover
-    // from the next full-size proposal's limit violation.
+
+
     for (int i = 0; i < 7; ++i) {
         const int joint = later.joint(i);
         later.m->jnt_range[2 * joint] = later.m->jnt_range[2 * joint + 1] = later.angles()[i];
@@ -384,7 +384,7 @@ void accepted_monotonicity() {
     hand::IkOptions options; options.step_size = 8; options.max_iterations = 4;
     const auto rec = run(r, r.position() + Vec(.02, 0, 0),
                          "backtracking", "monotonicity", nullptr, options);
-    // Monotonic progress does not imply convergence for an aggressive step size.
+
     require(!rec.result.success && rec.result.reason == hand::IkTermination::iteration_limit &&
             rec.result.iterations == options.max_iterations,
             "Monotonicity fixture did not exercise the full bounded update budget");
@@ -425,7 +425,7 @@ void line_search_rejection() {
             rec.result.final_error == rec.result.steps.front().error_before,
             "Rejected FK candidates were not rolled back atomically");
 
-    // Cover the alpha floor both before the first trial and after one rejection.
+
     for (double alpha : {5e-7, 1e-6}) {
         Robot tiny; const auto q = tiny.full_q(); const Vec p = tiny.position();
         options.step_size = alpha; options.tolerance = 0;
@@ -664,8 +664,8 @@ void numerical_validity() {
     for (int scenario = 0; scenario < 3; ++scenario) {
         Robot r; const auto q = r.full_q(); const Vec p = r.position();
         Vec target = p + Vec(.02, 0, 0); hand::IkOptions options;
-        if (scenario == 0) target = Vec::Constant(huge); // finite input, overflowing norm
-        if (scenario == 1) options.damping = huge; // overflowing normal matrix
+        if (scenario == 0) target = Vec::Constant(huge);
+        if (scenario == 1) options.damping = huge;
         if (scenario == 2) { options.step_size = huge; target = p + Vec(100, 0, 0); }
         const auto result = hand::solve_panda_ik(r.m.get(), r.d.get(), target, "hand", options);
         std::cout << "Numerical overflow scenario=" << scenario
