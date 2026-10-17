@@ -15,6 +15,7 @@ target_compile_features(hand_eigen INTERFACE cxx_std_14)
 
 add_library(hand_core STATIC
     src/kinematics.cpp
+    src/drawing.cpp
 )
 
 target_compile_features(hand_core PUBLIC cxx_std_17)
@@ -86,6 +87,16 @@ if(HAND_BUILD_MUJOCO)
     target_include_directories(hand_ik PUBLIC "${PROJECT_SOURCE_DIR}/include")
     target_link_libraries(hand_ik PUBLIC Eigen3::Eigen mujoco_native)
 
+    add_library(hand_execution STATIC src/execution.cpp)
+    target_compile_features(hand_execution PUBLIC cxx_std_17)
+    target_link_libraries(hand_execution PUBLIC hand_core mujoco_native)
+    add_executable(hand_draw apps/draw.cpp)
+    target_link_libraries(hand_draw PRIVATE hand_execution)
+    add_custom_command(TARGET hand_draw POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${MUJOCO_DIR}/bin/mujoco.dll" "$<TARGET_FILE_DIR:hand_draw>"
+    )
+
     add_executable(hand_panda
         apps/panda.cpp
     )
@@ -113,6 +124,10 @@ if(BUILD_TESTING)
     target_link_libraries(test_kinematics PRIVATE hand_core)
     add_test(NAME kinematics COMMAND test_kinematics)
     list(APPEND HAND_TARGETS test_kinematics)
+    add_executable(test_drawing tests/test_drawing.cpp)
+    target_link_libraries(test_drawing PRIVATE hand_core)
+    add_test(NAME drawing_contract COMMAND test_drawing)
+    list(APPEND HAND_TARGETS test_drawing)
     if(TARGET hand_ik)
         add_executable(test_panda_ik tests/test_panda_ik.cpp)
         target_link_libraries(test_panda_ik PRIVATE hand_ik)
@@ -147,7 +162,7 @@ if(BUILD_TESTING)
 endif()
 
 if(TARGET hand_panda)
-    list(APPEND HAND_TARGETS hand_mujoco hand_ik hand_panda)
+    list(APPEND HAND_TARGETS hand_mujoco hand_ik hand_panda hand_execution hand_draw)
 endif()
 
 foreach(target IN LISTS HAND_TARGETS)
